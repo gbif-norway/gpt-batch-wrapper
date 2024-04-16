@@ -11,9 +11,10 @@ from openai import OpenAI
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class OCRDataProcessor:
-    def __init__(self, ocr_data, system_prompt):
+    def __init__(self, ocr_data, system_prompt, model="gpt-3.5-turbo"):
         self.ocr_data = ocr_data
         self.system_prompt = system_prompt
+        self.model = model
         self.api_key = os.getenv('OPENAI_API_KEY')
         self.client = OpenAI()
         logging.info("OCRDataProcessor instance created with provided OCR data and system prompt.")
@@ -23,7 +24,7 @@ class OCRDataProcessor:
         df.columns = ['custom_id', 'ocr']
         df['method'] = 'POST'
         df['url'] = '/v1/chat/completions'
-        df['body'] = df['ocr'].apply(lambda x: {"model": "gpt-3.5-turbo", "messages": [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": x}]})
+        df['body'] = df['ocr'].apply(lambda x: {"model": self.model, "messages": [{"role": "system", "content": self.system_prompt}, {"role": "user", "content": x}]})
         logging.info("Dataframe prepared for processing.")
         return df.drop('ocr', axis=1)
 
