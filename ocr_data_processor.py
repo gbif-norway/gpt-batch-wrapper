@@ -6,7 +6,7 @@ import pandas as pd
 import requests
 import json_repair
 from openai import OpenAI
-from tenacity import retry, wait_exponential, stop_after_delay
+from tenacity import retry, wait_exponential, stop_after_delay, retry_if_exception_type
 
 
 # Set up logging
@@ -138,7 +138,7 @@ if __name__ == '__main__':
         batch_details = processor.wait_for_batch_completion(batch['id'])
     except Exception as e:
         logging.error(f"Failed to complete batch: {str(e)}")
-        
+
     if batch_details['status'] == 'completed':
         results = processor.process_responses(batch_details['output_file_id'])
         print(results)
