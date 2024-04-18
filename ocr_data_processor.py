@@ -6,9 +6,14 @@ import pandas as pd
 import requests
 import json_repair
 from openai import OpenAI
+from tenacity import retry, wait_exponential, stop_after_delay
+
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+class BatchNotReadyException(Exception):
+    pass
 
 class OCRDataProcessor:
     def __init__(self, ocr_data, system_prompt, model="gpt-3.5-turbo"):
@@ -64,15 +69,17 @@ class OCRDataProcessor:
         logging.info(f"Batch details retrieved for batch ID: {batch_id}. Status: {response.status_code}")
         return response.json()
 
-    def wait_for_batch_completion(self, batch_id, check_interval=10):
-        logging.info(f"Waiting for batch completion. Batch ID: {batch_id}")
-        while True:
-            batch_details = self.get_batch_details(batch_id)
-            if batch_details['status'] in ['completed', 'failed']:
-                logging.info(f"Batch processing completed with status: {batch_details['status']}. Batch ID: {batch_id}")
-                return batch_details
-            time.sleep(check_interval)
-            logging.debug("Batch not ready yet, rechecking...")
+    @retry(wait=wait_exponential(multiplier=1, max=1800),  # max wait 1800 seconds (30 mins)
+        stop=stop_after_delay(86400),  # stop after 24 hours
+        retry=retry_if_exception_type(BatchNotReadyException))
+    def wait_for_batch_completion(self, batch_id):
+        logging.info(f"Checking batch status. Batch ID: {batch_id}")
+        batch_details = self.get_batch_details(batch_id)
+        if batch_details['status'] in ['completed', 'failed']:
+            logging.info(f"Batch processing completed with status: {batch_details['status']}. Batch ID: {batch_id}")
+            return batch_details
+        else:
+            raise BatchNotReadyException("Batch not ready yet, rechecking...")
 
     def process_responses(self, output_file_id):
         content = self.client.files.content(output_file_id)
@@ -126,7 +133,12 @@ if __name__ == '__main__':
     df = processor.prepare_data()
     batch_file = processor.create_batch_file(df)
     batch = processor.create_batch(batch_file)
-    batch_details = processor.wait_for_batch_completion(batch['id'])
+
+    try:
+        batch_details = processor.wait_for_batch_completion(batch['id'])
+    except Exception as e:
+        logging.error(f"Failed to complete batch: {str(e)}")
+        
     if batch_details['status'] == 'completed':
         results = processor.process_responses(batch_details['output_file_id'])
         print(results)

@@ -2,3 +2,4 @@ openai
 pandas
 json_repair
 jupyter
+tenacity
